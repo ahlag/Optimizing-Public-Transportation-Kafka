@@ -65,12 +65,13 @@ class Producer:
         #
         #
         
+        client = AdminClient({"bootstrap.servers": BROKER_URL})
+        
         # Skips if topic already exists
-        if self.topic_exists(self.topic_name):
+        topic_metadata = client.list_topics(timeout=5)
+        if self.topic_name in set(t.topic for t in iter(topic_metadata.topics.values())):
             logger.info(f"{self.topic_name} already exists.")
             return
-
-        client = AdminClient({"bootstrap.servers": BROKER_URL})
         
         futures = client.create_topics(
                         [
