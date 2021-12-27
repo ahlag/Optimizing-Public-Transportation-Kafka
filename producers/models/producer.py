@@ -9,6 +9,8 @@ from confluent_kafka.avro import AvroProducer
 
 logger = logging.getLogger(__name__)
 
+BROKER_URL = "PLAINTEXT://localhost:9092"
+SCHEMA_REGISTRY_URL = "http://localhost:8081"
 
 class Producer:
     """Defines and provides common functionality amongst Producers"""
@@ -38,9 +40,8 @@ class Producer:
         #
         #
         self.broker_properties = {
-            # TODO
-            # TODO
-            # TODO
+            "bootstrap.servers": BROKER_URL,
+            "schema.registry.url": SCHEMA_REGISTRY_URL,
         }
 
         # If the topic does not already exist, try to create it
@@ -49,8 +50,11 @@ class Producer:
             Producer.existing_topics.add(self.topic_name)
 
         # TODO: Configure the AvroProducer
-        # self.producer = AvroProducer(
-        # )
+        self.producer = AvroProducer(
+                            self.broker_properties,
+                            default_key_schema = self.key_schema,
+                            default_value_schema = self.value_schema
+                        )
 
     def create_topic(self):
         """Creates the producer topic if it does not already exist"""
@@ -60,7 +64,37 @@ class Producer:
         # the Kafka Broker.
         #
         #
-        logger.info("topic creation kafka integration incomplete - skipping")
+        
+        # Skips if topic already exists
+        if self.topic_exists(self.topic_name):
+            logger.info(f"{self.topic_name} already exists.")
+            return
+
+        client = AdminClient({"bootstrap.servers": BROKER_URL})
+        
+        futures = client.create_topics(
+                        [
+                            NewTopic(
+                                topic=self.topic_name,
+                                num_partitions=self.num_partitions,
+                                replication_factor=self.num_replicas,
+                                config={
+                                    "cleanup.policy": "delete",
+                                    "compression.type": "lz4",
+                                    "delete.retention.ms": "100",
+                                    "file.delete.delay.ms": "100",
+                                },
+                            ),
+
+                        ]
+                    )
+
+        for topic, future in futures.items():
+            try:
+                future.result()
+                logger.info(f"created {self.topic_name}")
+            except Exception as e:
+                logger.error(f"failed to create {self.topic_name}: {e}")
 
     def time_millis(self):
         return int(round(time.time() * 1000))
@@ -72,7 +106,11 @@ class Producer:
         # TODO: Write cleanup code for the Producer here
         #
         #
-        logger.info("producer close incomplete - skipping")
+        if self.producer is not None:
+            logger.info("flushing producer")
+            self.producer.flush()
+        else:
+            logger.info("producer close incomplete - skipping")
 
     def time_millis(self):
         """Use this function to get the key for Kafka Events"""
